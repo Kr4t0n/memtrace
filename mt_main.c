@@ -50,3 +50,19 @@ static Bool mt_process_cmd_line_option(const HChar* arg)
 
     return True;
 }
+
+static void mt_print_usage(void)
+{
+    VG_(printf)(
+"   --mem-trace=yes|no          trace all memory access [yes]\n"
+"   --all-refs=yes|no           trace all memory reference [yes]\n"
+    );
+}
+
+static void mt_print_debug_usage(void)
+{
+    VG_(printf)(
+"   (none)\n"
+    );
+}
+
