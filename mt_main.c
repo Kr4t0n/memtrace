@@ -39,12 +39,12 @@
 /*------------------------------------------------------------*/
 
 static Bool clo_mem_trace = True;
-static Bool clo_all_refs = True;
+static Bool clo_trace_all = True;
 
 static Bool mt_process_cmd_line_option(const HChar* arg)
 {
     if VG_BOOL_CLO(arg, "--mem-trace",      clo_mem_trace) {}
-    else if VG_BOOL_CLO(arg, "--trace-all",  clo_all_refs) {}
+    else if VG_BOOL_CLO(arg, "--trace-all",  clo_trace_all) {}
     else
         return False;
 
@@ -132,7 +132,7 @@ static Int   events_used = 0;
 
 static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 {
-    if(trace-all) {
+    if(clo_trace_all) {
         VG_(printf)("I  %08lx,%lu\n", addr, size);
     }
     else {
@@ -142,7 +142,7 @@ static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 
 static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
 {
-    if(trace-all) {
+    if(clo_trace_all) {
         VG_(printf)(" L %08lx,%lu\n", addr, size);
     }
     else {
@@ -152,7 +152,7 @@ static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
 
 static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
 {
-    if(trace-all) {
+    if(clo_trace_all) {
         VG_(printf)(" S %08lx,%lu\n", addr, size);
     }
     else {
@@ -162,7 +162,7 @@ static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
 
 static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
 {
-    if(trace-all) {
+    if(clo_trace_all) {
         VG_(printf)(" M %08lx,%lu\n", addr, size);
     }
     else {
@@ -195,7 +195,7 @@ static void flushEvents(IRSB* sb)
                 helperAddr = trace_load;
                 break;
 
-            case Event_Dr:
+            case Event_Dw:
                 helperName = "trace_store";
                 helperAddr = trace_store;
                 break;
@@ -360,7 +360,7 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
     }
 
     for (/*use current i*/; i < sbIn->stmts_used; i++) {
-        IRSTmt* st = sbIn->stmts[i];
+        IRStmt* st = sbIn->stmts[i];
         if (!st || st->tag == Ist_NoOp) continue;
 
         switch(st->tag) {
@@ -372,7 +372,7 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 addStmtToIRSB(sbOut, st);
                 break;
 
-            case Ist_IMark:
+            case Ist_IMark: {
                 if(clo_mem_trace) {
                     // WARNING: do not remove this function call, even if you
                     // aren't interested in instruction reads.  See the comment
@@ -382,8 +382,9 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_WrTmp:
+            case Ist_WrTmp: {
                 // Add a call to trace_load() if --mem-trace=yes.
                 if(clo_mem_trace) {
                     IRExpr* data = st->Ist.WrTmp.data;
@@ -394,10 +395,11 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_Store:
+            case Ist_Store: {
                 IRExpr*   data  = st->Ist.Store.data;
-                IRType    type  = typeofIRExpr(tyenv, data);
+                IRType    type  = typeOfIRExpr(tyenv, data);
                 tl_assert(type != Ity_INVALID);
                 if(clo_mem_trace) {
                     addEvent_Dw(sbOut, st->Ist.Store.addr,
@@ -405,11 +407,12 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_StoreG:
+            case Ist_StoreG: {
                 IRStoreG* sg    = st->Ist.StoreG.details;
                 IRExpr*   data  = sg->data;
-                IRType    type  = typeofIRExpr(tyenv, data);
+                IRType    type  = typeOfIRExpr(tyenv, data);
                 tl_assert(type != Ity_INVALID);
                 if(clo_mem_trace) {
                     addEvent_Dw_guarded(sbOut, sg->addr,
@@ -417,12 +420,13 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_LoadG:
+            case Ist_LoadG: {
                 IRLoadG*   lg       = st->Ist.LoadG.details;
                 IRType     type     = Ity_INVALID; /* loaded type */
                 IRType     typeWide = Ity_INVALID; /* after implicit widening */
-                typeofIRLoadGOp(lg->cvt, &typeWide, &type);
+                typeOfIRLoadGOp(lg->cvt, &typeWide, &type);
                 tl_assert(type != Ity_INVALID);
                 if(clo_mem_trace) {
                     addEvent_Dr_guarded(sbOut, lg->addr,
@@ -430,8 +434,9 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_Dirty:
+            case Ist_Dirty: {
                 if(clo_mem_trace) {
                     Int      dsize;
                     IRDirty* d = st->Ist.Dirty.details;
@@ -454,8 +459,9 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_CAS:
+            case Ist_CAS: {
                 /* We treat it as a read and a write of the location.  I
                    think that is the same behaviour as it was before IRCAS
                    was introduced, since prior to that point, the Vex
@@ -466,7 +472,7 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 IRCAS*  cas = st->Ist.CAS.details;
                 tl_assert(cas->addr != NULL);
                 tl_assert(cas->dataLo != NULL);
-                dataTy   = typeofIRExpr(tyenv, cas->dataLo);
+                dataTy   = typeOfIRExpr(tyenv, cas->dataLo);
                 dataSize = sizeofIRType(dataTy);
                 if(clo_mem_trace) {
                     addEvent_Dr(sbOut, cas->addr, dataSize);
@@ -474,12 +480,13 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_LLSC:
+            case Ist_LLSC: {
                 IRType dataTy;
                 if(st->Ist.LLSC.storedata == NULL) {
                     /* LL */
-                    dataTy = typeofIRTemp(tyenv, st->Ist.LLSC.result);
+                    dataTy = typeOfIRTemp(tyenv, st->Ist.LLSC.result);
                     if(clo_mem_trace) {
                         addEvent_Dr(sbOut, st->Ist.LLSC.addr,
                                            sizeofIRType(dataTy));
@@ -488,7 +495,7 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 else {
                     /* SC */
-                    dataTy = typeofIRExpr(tyenv, st->Ist.LLSC.storedata);
+                    dataTy = typeOfIRExpr(tyenv, st->Ist.LLSC.storedata);
                     if(clo_mem_trace) {
                         addEvent_Dw(sbOut, st->Ist.LLSC.addr,
                                            sizeofIRType(dataTy));
@@ -496,14 +503,16 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 }
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
-            case Ist_Exit:
+            case Ist_Exit: {
                 if(clo_mem_trace) {
                     flushEvents(sbOut);
                 }
 
                 addStmtToIRSB(sbOut, st);
                 break;
+            }
 
             default:
                 ppIRStmt(st);
@@ -525,23 +534,23 @@ static void mt_fini(Int exitcode)
 
 static void mt_pre_clo_init(void)
 {
-    VG_(details_name)            ("Memtrace");
-    VG_(details_version)         (NULL);
-    VG_(details_description)     ("A memory tracing tool")
-    VG_(details_copyright_author)(
-        "Copyright (C) 2018, and GNU GPL'd, by Kr4t0n.");
-    VG_(details_bug_reports_to)  (VG_BUGS_TO)
-    VG_(details_avg_translation_sizeB)  (200);
+   VG_(details_name)            ("Memtrace");
+   VG_(details_version)         (NULL);
+   VG_(details_description)     ("A memory tracing tool");
+   VG_(details_copyright_author)(
+      "Copyright (C) 2018, and GNU GPL'd, by Kr4t0n.");
+   VG_(details_bug_reports_to)  (VG_BUGS_TO);
+   VG_(details_avg_translation_sizeB) (200);
 
-    VG_(basic_tool_funcs)           (mt_post_clo_init,
-                                     mt_instrument,
-                                     mt_fini);
-    VG_(needs_command_line_options) (mt_process_cmd_line_option,
-                                     mt_print_usage,
-                                     mt_print_debug_usage);
+   VG_(basic_tool_funcs)          (mt_post_clo_init,
+                                   mt_instrument,
+                                   mt_fini);
+   VG_(needs_command_line_options)(mt_process_cmd_line_option,
+                                   mt_print_usage,
+                                   mt_print_debug_usage);
 }
 
-VG_DETERMINE_INTERFACE_VERSION(lk_pre_clo_init)
+VG_DETERMINE_INTERFACE_VERSION(mt_pre_clo_init)
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                mt_main.c ---*/
