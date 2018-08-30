@@ -40,11 +40,13 @@
 
 static Bool clo_mem_trace = True;
 static Bool clo_trace_all = True;
+static Bool clo_show_func = True;
 
 static Bool mt_process_cmd_line_option(const HChar* arg)
 {
     if VG_BOOL_CLO(arg, "--mem-trace",      clo_mem_trace) {}
-    else if VG_BOOL_CLO(arg, "--trace-all",  clo_trace_all) {}
+    else if VG_BOOL_CLO(arg, "--trace-all", clo_trace_all) {}
+    else if VG_BOOL_CLO(arg, "--show-func", clo_show_func) {}
     else
         return False;
 
@@ -55,7 +57,8 @@ static void mt_print_usage(void)
 {
     VG_(printf)(
 "   --mem-trace=yes|no          trace all memory access [yes]\n"
-"   --trace-all=yes|no           trace all memory reference [yes]\n"
+"   --trace-all=yes|no          trace all memory reference [yes]\n"
+"   --show-func=yes|no          show function name [yes]\n"
     );
 }
 
@@ -129,6 +132,13 @@ static Int   events_used = 0;
 /*------------------------------------------------------------*/
 /*--- Functions for memory tracing                         ---*/
 /*------------------------------------------------------------*/
+
+static void showFunc(const HChar* fnname)
+{
+    if(clo_show_func) {
+        VG_(printf)("%s\n", fnname);
+    }
+}
 
 static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 {
@@ -338,6 +348,7 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
     Int   i;
     IRSB* sbOut;
     IRTypeEnv* tyenv = sbIn->tyenv;
+    DiEpoch    ep = VG_(current_DiEpoch)();
 
 
     if(gWordTy != hWordTy) {
@@ -373,6 +384,12 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 break;
 
             case Ist_IMark: {
+                const HChar* fnname;
+                if (clo_show_func) {
+                    if(VG_(get_fnname_if_entry)(ep, st->Ist.IMark.addr, &fnname)) {
+                        showFunc(fnname);
+                    }
+                }
                 if(clo_mem_trace) {
                     // WARNING: do not remove this function call, even if you
                     // aren't interested in instruction reads.  See the comment
