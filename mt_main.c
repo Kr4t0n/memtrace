@@ -33,6 +33,8 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_options.h"
 #include "pub_tool_machine.h"
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_replacemalloc.h"
 
 /*------------------------------------------------------------*/
 /*--- Command line options                                 ---*/
@@ -130,10 +132,172 @@ static Event events[N_EVENTS];
 static Int   events_used = 0;
 
 /*------------------------------------------------------------*/
+/*--- Stuff for --trace-all=no                             ---*/
+/*------------------------------------------------------------*/
+
+typedef
+    struct
+    {
+        ULong           offset;
+        ULong           start;
+        ULong           size;
+        struct Address* next;
+    }
+    Address;
+
+/* Use a link table to collect all the address allocated by the program. */
+
+static Address* addresses = NULL;
+static ULong watermark = 0;
+
+/*------------------------------------------------------------*/
+/*--- Functions for --trace-all=no                         ---*/
+/*------------------------------------------------------------*/
+
+static void addAddress(void* p, SizeT req_szB)
+{
+    if(!clo_trace_all) {
+        VG_(printf)("============================\n");
+        Address* ap = VG_(cli_malloc)(VG_(clo_alignment), sizeof(Address));
+        ap->start   = (ULong)p;
+        ap->size    = (ULong)req_szB;
+        ap->offset  = watermark;
+        ap->next    = addresses;
+        addresses   = ap;
+        watermark  += ((ULong)req_szB + 7) & ~7;
+        VG_(printf)("Start point: %08lx\n", ap->start);
+        VG_(printf)("Size: %lu\n", ap->size);
+        VG_(printf)("Offset: %08lx\n", ap->offset);
+        VG_(printf)("============================\n");
+    }
+}
+
+static void removeAddress(void* p) 
+{
+    VG_(printf)("DEBUG: Free address: %08lx\n", (ULong)p);
+    if(!clo_trace_all) {
+        Address** ap = &addresses;
+        const ULong temp = (ULong)p;
+        while(*ap) {
+            if(temp >= (*ap)->start && temp < ((*ap)->start + (*ap)->size)) {
+                VG_(printf)("DEBUG: corresponding record found! \n");
+                Address* tp = *ap;
+                ap = &((*ap)->next);
+                VG_(printf)("Size: %lu\n", tp->size);
+                VG_(cli_free)(tp);
+                VG_(printf)("========remove address successfully========\n");
+                return;
+            }
+            ap = &(*ap)->next;
+        }
+        VG_(printf)("memtrace: ERROR: Address not found\n");
+    }
+}
+
+static ULong isInAddress(Addr addr)
+{
+    if(!clo_trace_all) {
+        Address* ap;
+        for(ap = addresses; ap; ap = ap->next) {
+            if(addr >= ap->start && addr < ap->start + ap->size) {
+                return addr - ap->start + ap->offset;
+            }
+        }
+        return -1;
+    }
+}
+
+static void* alloc_and_add_wrapper(ThreadId tid, SizeT req_szB, 
+                                   SizeT req_alignB, Bool is_zeroed)
+{
+    SizeT actual_szB, slop_szB;
+    void* p;
+
+    if((SSizeT)req_szB < 0){
+        return NULL;
+    }
+
+    // Allocate corresponding block
+    p = VG_(cli_malloc)(req_alignB, req_szB);
+    if(!p) {
+        return NULL;
+    }
+    if(is_zeroed) {
+        VG_(memset)(p, 0, req_szB);
+    }
+    actual_szB = VG_(cli_malloc_usable_size)(p);
+    tl_assert(actual_szB >= req_szB);
+    slop_szB = actual_szB - req_szB;
+
+    addAddress(p, req_szB);
+
+    return p;
+}
+
+static void* mt_malloc(ThreadId tid, SizeT szB)
+{
+    VG_(printf)("========malloc replaced by memtrace========\n");
+    return alloc_and_add_wrapper(tid, szB, VG_(clo_alignment), False);
+}
+
+static void* mt___builtin_new(ThreadId tid, SizeT szB)
+{
+    VG_(printf)("========builtin_new replaced by memtrace========\n");
+    return alloc_and_add_wrapper(tid, szB, VG_(clo_alignment), False);
+}
+
+static void* mt___builtin_vec_new(ThreadId tid, SizeT szB)
+{
+    VG_(printf)("========buildin_vec_new replaced by memtrace========\n");
+    return alloc_and_add_wrapper(tid, szB, VG_(clo_alignment), False);
+}
+
+static void* mt_calloc(ThreadId tid, SizeT m, SizeT szB)
+{
+    VG_(printf)("========calloc replaced by memtrace========\n");
+    return alloc_and_add_wrapper(tid, m * szB, VG_(clo_alignment), True);
+}
+
+static void* mt_memalign(ThreadId tid, SizeT alignB, SizeT szB)
+{
+    VG_(printf)("========memalign replaced by memtrace========\n");
+    return alloc_and_add_wrapper(tid, szB, alignB, False);
+}
+
+static void mt_free(ThreadId tid, void* p)
+{
+    removeAddress(p);
+    VG_(cli_free)(p);
+}
+
+static void mt___builtin_delete(ThreadId tid, void* p)
+{
+    removeAddress(p);
+    VG_(cli_free)(p);
+}
+
+static void mt___builtin_vec_delete(ThreadId tid, void* p)
+{
+    removeAddress(p);
+    VG_(cli_free)(p);
+}
+
+static void* mt_realloc(ThreadId tid, void* p_old, SizeT new_szB)
+{
+    removeAddress(p_old);
+    return alloc_and_add_wrapper(tid, new_szB, VG_(clo_alignment), False);
+}
+
+static SizeT mt_malloc_usable_size(ThreadId tid, void* p)
+{
+    return VG_(cli_malloc_usable_size)(p);
+}         
+
+/*------------------------------------------------------------*/
 /*--- Functions for memory tracing                         ---*/
 /*------------------------------------------------------------*/
 
-static void showFunc(const HChar* fnname)
+static VG_REGPARM(1) void showFunc(const HChar* fnname)
 {
     if(clo_show_func) {
         VG_(printf)("%s\n", fnname);
@@ -152,31 +316,40 @@ static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 
 static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
 {
+    ULong offset;
     if(clo_trace_all) {
         VG_(printf)(" L %08lx,%lu\n", addr, size);
     }
     else {
-        //TODO
+        if((offset = isInAddress(addr)) != -1) {
+            VG_(printf)(" L %08lx,%lu,    %08lx\n", addr, size, offset);
+        }
     }
 }
 
 static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
 {
+    ULong offset;
     if(clo_trace_all) {
         VG_(printf)(" S %08lx,%lu\n", addr, size);
     }
     else {
-        //TODO
+        if((offset = isInAddress(addr)) != -1) {
+            VG_(printf)(" S %08lx,%lu,    %08lx\n", addr, size, offset);
+        }
     }
 }
 
 static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
 {
+    ULong offset;
     if(clo_trace_all) {
         VG_(printf)(" M %08lx,%lu\n", addr, size);
     }
     else {
-        //TODO
+        if((offset = isInAddress(addr)) != -1) {
+            VG_(printf)(" M %08lx,%lu,    %08lx\n", addr, size, offset);
+        }
     }
 }
 
@@ -551,20 +724,33 @@ static void mt_fini(Int exitcode)
 
 static void mt_pre_clo_init(void)
 {
-   VG_(details_name)            ("Memtrace");
-   VG_(details_version)         (NULL);
-   VG_(details_description)     ("A memory tracing tool");
-   VG_(details_copyright_author)(
+    VG_(details_name)            ("Memtrace");
+    VG_(details_version)         (NULL);
+    VG_(details_description)     ("A memory tracing tool");
+    VG_(details_copyright_author)(
       "Copyright (C) 2018, and GNU GPL'd, by Kr4t0n.");
-   VG_(details_bug_reports_to)  (VG_BUGS_TO);
-   VG_(details_avg_translation_sizeB) (200);
+    VG_(details_bug_reports_to)  (VG_BUGS_TO);
+    VG_(details_avg_translation_sizeB) (200);
 
-   VG_(basic_tool_funcs)          (mt_post_clo_init,
-                                   mt_instrument,
-                                   mt_fini);
-   VG_(needs_command_line_options)(mt_process_cmd_line_option,
-                                   mt_print_usage,
-                                   mt_print_debug_usage);
+    VG_(basic_tool_funcs)          (mt_post_clo_init,
+                                    mt_instrument,
+                                    mt_fini);
+    VG_(needs_command_line_options)(mt_process_cmd_line_option,
+                                    mt_print_usage,
+                                    mt_print_debug_usage);
+    VG_(needs_malloc_replacement)  (mt_malloc,
+                                    mt___builtin_new,
+                                    mt___builtin_vec_new,
+                                    mt_memalign,
+                                    mt_calloc,
+                                    mt_free,
+                                    mt___builtin_delete,
+                                    mt___builtin_vec_delete,
+                                    mt_realloc,
+                                    mt_malloc_usable_size,
+                                    16);
+    VG_(needs_libc_freeres)();
+    VG_(needs_cxx_freeres)();
 }
 
 VG_DETERMINE_INTERFACE_VERSION(mt_pre_clo_init)
