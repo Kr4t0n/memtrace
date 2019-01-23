@@ -35,6 +35,8 @@
 #include "pub_tool_machine.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_replacemalloc.h"
+#include "pub_tool_stacktrace.h"
+#include "pub_tool_libcprint.h"
 
 /*------------------------------------------------------------*/
 /*--- Command line options                                 ---*/
@@ -151,13 +153,26 @@ static Address* addresses = NULL;
 static ULong watermark = 0;
 
 /*------------------------------------------------------------*/
+/*--- Global Tool Functions                                ---*/
+/*------------------------------------------------------------*/
+static void pp_StackTrace_wrapper(HChar* trace_info, ThreadId tid)
+{
+    static Addr ips[10];
+    const HChar *fnname;
+
+    Int n_ips = VG_(get_StackTrace)(tid, ips, 10, NULL, NULL, 0);
+    VG_(message)(Vg_UserMsg, "\n Detected %s, stack trace:\n", trace_info);
+    VG_(pp_StackTrace)(VG_(current_DiEpoch)(), ips, n_ips);
+}
+
+
+/*------------------------------------------------------------*/
 /*--- Functions for --trace-all=no                         ---*/
 /*------------------------------------------------------------*/
 
 static void addAddress(void* p, SizeT req_szB)
 {
     if(!clo_trace_all) {
-        VG_(printf)("============================\n");
         Address* ap = VG_(cli_malloc)(VG_(clo_alignment), sizeof(Address));
         ap->start   = (ULong)p;
         ap->size    = (ULong)req_szB;
@@ -165,27 +180,19 @@ static void addAddress(void* p, SizeT req_szB)
         ap->next    = addresses;
         addresses   = ap;
         watermark  += ((ULong)req_szB + 7) & ~7;
-        VG_(printf)("Start point: %08lx\n", ap->start);
-        VG_(printf)("Size: %lu\n", ap->size);
-        VG_(printf)("Offset: %08lx\n", ap->offset);
-        VG_(printf)("============================\n");
     }
 }
 
 static void removeAddress(void* p) 
 {
-    VG_(printf)("DEBUG: Free address: %08lx\n", (ULong)p);
     if(!clo_trace_all) {
         Address** ap = &addresses;
         const ULong temp = (ULong)p;
         while(*ap) {
             if(temp >= (*ap)->start && temp < ((*ap)->start + (*ap)->size)) {
-                VG_(printf)("DEBUG: corresponding record found! \n");
                 Address* tp = *ap;
                 ap = &((*ap)->next);
-                VG_(printf)("Size: %lu\n", tp->size);
                 VG_(cli_free)(tp);
-                VG_(printf)("========remove address successfully========\n");
                 return;
             }
             ap = &(*ap)->next;
@@ -229,6 +236,14 @@ static void* alloc_and_add_wrapper(ThreadId tid, SizeT req_szB,
     tl_assert(actual_szB >= req_szB);
     slop_szB = actual_szB - req_szB;
 
+    // Print the stack trace and detailed information of allocation
+    // There is a strange bug that I cannot print the address and size information
+    // in a single statement, otherwise, the size will be zero
+    pp_StackTrace_wrapper("allocation function", tid);
+    VG_(message)(Vg_UserMsg, " Detailed information of allocation:\n");
+    VG_(message)(Vg_UserMsg, "   Address: 0x%08lx,", (ULong)p);
+    VG_(message)(Vg_UserMsg, " Size: %lu\n\n", (ULong)req_szB);
+
     addAddress(p, req_szB);
 
     return p;
@@ -236,54 +251,53 @@ static void* alloc_and_add_wrapper(ThreadId tid, SizeT req_szB,
 
 static void* mt_malloc(ThreadId tid, SizeT szB)
 {
-    VG_(printf)("========malloc replaced by memtrace========\n");
     return alloc_and_add_wrapper(tid, szB, VG_(clo_alignment), False);
 }
 
 static void* mt___builtin_new(ThreadId tid, SizeT szB)
 {
-    VG_(printf)("========builtin_new replaced by memtrace========\n");
     return alloc_and_add_wrapper(tid, szB, VG_(clo_alignment), False);
 }
 
 static void* mt___builtin_vec_new(ThreadId tid, SizeT szB)
 {
-    VG_(printf)("========buildin_vec_new replaced by memtrace========\n");
     return alloc_and_add_wrapper(tid, szB, VG_(clo_alignment), False);
 }
 
 static void* mt_calloc(ThreadId tid, SizeT m, SizeT szB)
 {
-    VG_(printf)("========calloc replaced by memtrace========\n");
     return alloc_and_add_wrapper(tid, m * szB, VG_(clo_alignment), True);
 }
 
 static void* mt_memalign(ThreadId tid, SizeT alignB, SizeT szB)
 {
-    VG_(printf)("========memalign replaced by memtrace========\n");
     return alloc_and_add_wrapper(tid, szB, alignB, False);
 }
 
 static void mt_free(ThreadId tid, void* p)
 {
+    pp_StackTrace_wrapper("deallocation function", tid);
     removeAddress(p);
     VG_(cli_free)(p);
 }
 
 static void mt___builtin_delete(ThreadId tid, void* p)
 {
+    pp_StackTrace_wrapper("deallocation function", tid);
     removeAddress(p);
     VG_(cli_free)(p);
 }
 
 static void mt___builtin_vec_delete(ThreadId tid, void* p)
 {
+    pp_StackTrace_wrapper("deallocation function", tid);
     removeAddress(p);
     VG_(cli_free)(p);
 }
 
 static void* mt_realloc(ThreadId tid, void* p_old, SizeT new_szB)
 {
+    pp_StackTrace_wrapper("deallocation function", tid);
     removeAddress(p_old);
     return alloc_and_add_wrapper(tid, new_szB, VG_(clo_alignment), False);
 }
@@ -300,29 +314,29 @@ static SizeT mt_malloc_usable_size(ThreadId tid, void* p)
 static VG_REGPARM(1) void showFunc(const HChar* fnname)
 {
     if(clo_show_func) {
-        VG_(printf)("%s\n", fnname);
+        VG_(message)(Vg_UserMsg, " %s\n", fnname);
     }
 }
 
 static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 {
     if(clo_trace_all) {
-        VG_(printf)("I  %08lx,%lu\n", addr, size);
+        VG_(message)(Vg_UserMsg, " Instr at 0x%08lx: Size: %lu\n", addr, size);
     }
-    else {
-        //TODO
-    }
+    // else {
+    //     VG_(message)(Vg_UserMsg, " Instr at 0x%08lx: Size: %lu\n", addr, size);
+    // }
 }
 
 static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
 {
     ULong offset;
     if(clo_trace_all) {
-        VG_(printf)(" L %08lx,%lu\n", addr, size);
+        VG_(message)(Vg_UserMsg, " Load at 0x%08lx: Size: %lu\n", addr, size);
     }
     else {
         if((offset = isInAddress(addr)) != -1) {
-            VG_(printf)(" L %08lx,%lu,    %08lx\n", addr, size, offset);
+            VG_(message)(Vg_UserMsg, " Load at 0x%08lx: Size: %lu, Offset: %08lx\n", addr, size, offset);
         }
     }
 }
@@ -331,11 +345,11 @@ static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
 {
     ULong offset;
     if(clo_trace_all) {
-        VG_(printf)(" S %08lx,%lu\n", addr, size);
+        VG_(message)(Vg_UserMsg, " Store at 0x%08lx: Size: %lu\n", addr, size);
     }
     else {
         if((offset = isInAddress(addr)) != -1) {
-            VG_(printf)(" S %08lx,%lu,    %08lx\n", addr, size, offset);
+            VG_(message)(Vg_UserMsg, " Store at 0x%08lx: Size: %lu, Offset: %08lx\n", addr, size, offset);
         }
     }
 }
@@ -344,11 +358,11 @@ static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
 {
     ULong offset;
     if(clo_trace_all) {
-        VG_(printf)(" M %08lx,%lu\n", addr, size);
+        VG_(message)(Vg_UserMsg, " Modify at 0x%08lx: Size: %lu\n", addr, size);
     }
     else {
         if((offset = isInAddress(addr)) != -1) {
-            VG_(printf)(" M %08lx,%lu,    %08lx\n", addr, size, offset);
+            VG_(message)(Vg_UserMsg, " Modify at 0x%08lx: Size :%lu, Offset: %08lx\n", addr, size, offset);
         }
     }
 }
