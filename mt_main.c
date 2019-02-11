@@ -37,6 +37,8 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_stacktrace.h"
 #include "pub_tool_libcprint.h"
+#include "pub_tool_hashtable.h"
+#include "pub_tool_poolalloc.h"
 
 /*------------------------------------------------------------*/
 /*--- Command line options                                 ---*/
@@ -153,16 +155,29 @@ static Address* addresses = NULL;
 static ULong watermark = 0;
 
 /*------------------------------------------------------------*/
+/*--- Stuff for --show-func=yes                            ---*/
+/*------------------------------------------------------------*/
+HChar   lastFnname[255];
+
+/*------------------------------------------------------------*/
 /*--- Global Tool Functions                                ---*/
 /*------------------------------------------------------------*/
 static void pp_StackTrace_wrapper(HChar* trace_info, ThreadId tid)
 {
     static Addr ips[10];
-    const HChar *fnname;
 
     Int n_ips = VG_(get_StackTrace)(tid, ips, 10, NULL, NULL, 0);
-    VG_(message)(Vg_UserMsg, "\n Detected %s, stack trace:\n", trace_info);
+    VG_(message)(Vg_UserMsg, " Detected %s, stack trace:\n", trace_info);
     VG_(pp_StackTrace)(VG_(current_DiEpoch)(), ips, n_ips);
+}
+
+static void print_allocation_info(HChar* trace_info, ThreadId tid,
+                                  void* p, SizeT req_szB)
+{
+    pp_StackTrace_wrapper(trace_info, tid);
+    VG_(message)(Vg_UserMsg, " Detailed information of allocation:\n");
+    VG_(message)(Vg_UserMsg, "   Address: 0x%08lx,", (ULong)p);
+    VG_(message)(Vg_UserMsg, " Size: %lu\n\n", (ULong)req_szB);
 }
 
 
@@ -170,65 +185,45 @@ static void pp_StackTrace_wrapper(HChar* trace_info, ThreadId tid)
 /*--- Functions for --trace-all=no                         ---*/
 /*------------------------------------------------------------*/
 
-static void addAddress(void* p, SizeT req_szB)
-{
-    if(!clo_trace_all) {
-        Address* ap = VG_(cli_malloc)(VG_(clo_alignment), sizeof(Address));
-        ap->start   = (ULong)p;
-        ap->size    = (ULong)req_szB;
-        ap->offset  = watermark;
-        ap->next    = addresses;
-        addresses   = ap;
-        watermark  += ((ULong)req_szB + 7) & ~7;
+typedef
+    struct _HP_Chunk {
+        struct _HP_Chunk* next;
+        Addr              data;
+        SizeT             req_szB;
+        SizeT             slop_szB;
     }
+    HP_Chunk;
+
+static PoolAlloc *HP_Chunk_alloc_pool = NULL;
+
+static VgHashTable *allocaiton_list = NULL;
+
+static __inline__ void* add_address(ThreadId tid, void* p, SizeT req_szB, SizeT slop_szB)
+{
+    HP_Chunk* hc = VG_(allocEltPA)(HP_Chunk_alloc_pool);
+    hc->req_szB  = req_szB;
+    hc->slop_szB = slop_szB;
+    hc->data     = (Addr)p;
+    VG_(HT_add_node)(allocaiton_list, hc);
+
+    return p;
 }
 
-static void removeAddress(void* p) 
-{
-    if(!clo_trace_all) {
-        Address** ap = &addresses;
-        const ULong temp = (ULong)p;
-        while(*ap) {
-            if(temp >= (*ap)->start && temp < ((*ap)->start + (*ap)->size)) {
-                Address* tp = *ap;
-                ap = &((*ap)->next);
-                VG_(cli_free)(tp);
-                return;
-            }
-            ap = &(*ap)->next;
-        }
-        VG_(printf)("memtrace: ERROR: Address not found\n");
-    }
-}
-
-static ULong isInAddress(Addr addr)
-{
-    if(!clo_trace_all) {
-        Address* ap;
-        for(ap = addresses; ap; ap = ap->next) {
-            if(addr >= ap->start && addr < ap->start + ap->size) {
-                return addr - ap->start + ap->offset;
-            }
-        }
-        return -1;
-    }
-}
-
-static void* alloc_and_add_wrapper(ThreadId tid, SizeT req_szB, 
-                                   SizeT req_alignB, Bool is_zeroed)
+static __inline__ void* alloc_and_add_wrapper(ThreadId tid, SizeT req_szB, 
+                                              SizeT req_alignB, Bool is_zeroed)
 {
     SizeT actual_szB, slop_szB;
     void* p;
 
-    if((SSizeT)req_szB < 0){
+    if((SizeT)req_szB < 0) {
         return NULL;
     }
 
-    // Allocate corresponding block
     p = VG_(cli_malloc)(req_alignB, req_szB);
     if(!p) {
         return NULL;
     }
+
     if(is_zeroed) {
         VG_(memset)(p, 0, req_szB);
     }
@@ -236,17 +231,95 @@ static void* alloc_and_add_wrapper(ThreadId tid, SizeT req_szB,
     tl_assert(actual_szB >= req_szB);
     slop_szB = actual_szB - req_szB;
 
-    // Print the stack trace and detailed information of allocation
-    // There is a strange bug that I cannot print the address and size information
-    // in a single statement, otherwise, the size will be zero
-    pp_StackTrace_wrapper("allocation function", tid);
-    VG_(message)(Vg_UserMsg, " Detailed information of allocation:\n");
-    VG_(message)(Vg_UserMsg, "   Address: 0x%08lx,", (ULong)p);
-    VG_(message)(Vg_UserMsg, " Size: %lu\n\n", (ULong)req_szB);
+    add_address(tid, p, req_szB, slop_szB);
 
-    addAddress(p, req_szB);
+    print_allocation_info("allocation function", tid, p, req_szB);
 
     return p;
+}
+
+static __inline__ void remove_address(void* p)
+{
+    HP_Chunk* hc = VG_(HT_remove)(allocaiton_list, (UWord)p);
+    if(NULL == hc) {
+        return;
+    }
+
+    VG_(freeEltPA)(HP_Chunk_alloc_pool, hc);
+    hc = NULL;
+}
+
+static __inline__ void free_and_remove_wrapper(void* p)
+{
+    remove_address(p);
+    VG_(cli_free)(p);
+}
+
+static __inline__ void* realloc_address(ThreadId tid, void* p_old, SizeT new_req_szB)
+{
+    HP_Chunk* hc;
+    void*     p_new;
+    SizeT     old_req_szB, old_slop_szB, new_slop_szB, new_actual_szB;
+
+    hc = VG_(HT_remove)(allocaiton_list, (UWord)p_old);
+    if(hc == NULL) {
+        return NULL;
+    }
+
+    old_req_szB  = hc->req_szB;
+    old_slop_szB = hc->slop_szB;
+
+    if(new_req_szB <= old_req_szB + old_slop_szB) {
+        p_new = p_old;
+        new_slop_szB = old_slop_szB + (old_req_szB - new_req_szB);
+    }
+    else {
+        p_new = VG_(cli_malloc)(VG_(clo_alignment), new_req_szB);
+        if(!p_new) {
+            return NULL;
+        }
+        VG_(memcpy)(p_new, p_old, old_req_szB + old_slop_szB);
+        VG_(cli_free)(p_old);
+        new_actual_szB = VG_(cli_malloc_usable_size)(p_new);
+        tl_assert(new_actual_szB >= new_req_szB);
+        new_slop_szB = new_actual_szB - new_req_szB;
+    }
+
+    if(p_new) {
+        hc->data     = (Addr)p_new;
+        hc->req_szB  = new_req_szB;
+        hc->slop_szB = new_slop_szB;
+    }
+    VG_(HT_add_node)(allocaiton_list, hc);
+
+    return p_new;
+}
+
+// static Bool is_in_allocation_list(Addr addr)
+// {
+//     VG_(HT_ResetIter)(allocaiton_list);
+//     HP_Chunk* hc;
+//     while((hc = VG_(HT_Next)(allocaiton_list))) {
+//         if(hc->data <= addr && addr < hc->data + hc->req_szB) {
+//             return True;
+//         }
+//     }
+//     return False;
+// }
+
+static ULong is_in_allocation_list(Addr addr)
+{
+    HP_Chunk* hc;
+    ULong offset;
+
+    VG_(HT_ResetIter)(allocaiton_list);
+    while((hc = VG_(HT_Next)(allocaiton_list))) {
+        if(hc-> data <= addr && addr < hc->data + hc->req_szB) {
+            offset = addr - hc->data;
+            return offset;
+        }
+    }
+    return -1;
 }
 
 static void* mt_malloc(ThreadId tid, SizeT szB)
@@ -276,36 +349,30 @@ static void* mt_memalign(ThreadId tid, SizeT alignB, SizeT szB)
 
 static void mt_free(ThreadId tid, void* p)
 {
-    pp_StackTrace_wrapper("deallocation function", tid);
-    removeAddress(p);
-    VG_(cli_free)(p);
+    free_and_remove_wrapper(p);
 }
 
 static void mt___builtin_delete(ThreadId tid, void* p)
 {
-    pp_StackTrace_wrapper("deallocation function", tid);
-    removeAddress(p);
-    VG_(cli_free)(p);
+    free_and_remove_wrapper(p);
 }
 
 static void mt___builtin_vec_delete(ThreadId tid, void* p)
 {
-    pp_StackTrace_wrapper("deallocation function", tid);
-    removeAddress(p);
-    VG_(cli_free)(p);
+    free_and_remove_wrapper(p);
 }
 
 static void* mt_realloc(ThreadId tid, void* p_old, SizeT new_szB)
 {
-    pp_StackTrace_wrapper("deallocation function", tid);
-    removeAddress(p_old);
-    return alloc_and_add_wrapper(tid, new_szB, VG_(clo_alignment), False);
+    return realloc_address(tid, p_old, new_szB);
 }
 
 static SizeT mt_malloc_usable_size(ThreadId tid, void* p)
 {
-    return VG_(cli_malloc_usable_size)(p);
-}         
+    HP_Chunk* hc = VG_(HT_lookup)(allocaiton_list, (UWord)p);
+
+    return (hc ? hc->req_szB + hc->slop_szB : 0);
+}
 
 /*------------------------------------------------------------*/
 /*--- Functions for memory tracing                         ---*/
@@ -321,11 +388,11 @@ static VG_REGPARM(1) void showFunc(const HChar* fnname)
 static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 {
     if(clo_trace_all) {
-        VG_(message)(Vg_UserMsg, " Instr at 0x%08lx: Size: %lu\n", addr, size);
+        // VG_(message)(Vg_UserMsg, " Instr at 0x%08lx: Size: %lu\n", addr, size);
     }
-    // else {
-    //     VG_(message)(Vg_UserMsg, " Instr at 0x%08lx: Size: %lu\n", addr, size);
-    // }
+    else {
+        // VG_(message)(Vg_UserMsg, " Instr at 0x%08lx: Size: %lu\n", addr, size);
+    }
 }
 
 static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
@@ -335,7 +402,8 @@ static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
         VG_(message)(Vg_UserMsg, " Load at 0x%08lx: Size: %lu\n", addr, size);
     }
     else {
-        if((offset = isInAddress(addr)) != -1) {
+        offset = is_in_allocation_list(addr);
+        if(offset != -1) {
             VG_(message)(Vg_UserMsg, " Load at 0x%08lx: Size: %lu, Offset: %08lx\n", addr, size, offset);
         }
     }
@@ -348,7 +416,8 @@ static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
         VG_(message)(Vg_UserMsg, " Store at 0x%08lx: Size: %lu\n", addr, size);
     }
     else {
-        if((offset = isInAddress(addr)) != -1) {
+        offset = is_in_allocation_list(addr);
+        if(offset != -1) {
             VG_(message)(Vg_UserMsg, " Store at 0x%08lx: Size: %lu, Offset: %08lx\n", addr, size, offset);
         }
     }
@@ -361,7 +430,8 @@ static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
         VG_(message)(Vg_UserMsg, " Modify at 0x%08lx: Size: %lu\n", addr, size);
     }
     else {
-        if((offset = isInAddress(addr)) != -1) {
+        offset = is_in_allocation_list(addr);
+        if(offset != -1) {
             VG_(message)(Vg_UserMsg, " Modify at 0x%08lx: Size :%lu, Offset: %08lx\n", addr, size, offset);
         }
     }
@@ -537,7 +607,6 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
     IRTypeEnv* tyenv = sbIn->tyenv;
     DiEpoch    ep = VG_(current_DiEpoch)();
 
-
     if(gWordTy != hWordTy) {
         /* We don't currently support this case. */
         VG_(tool_panic)("host/guest word size mismatch");
@@ -575,6 +644,15 @@ static IRSB* mt_instrument(VgCallbackClosure* closure,
                 if (clo_show_func) {
                     if(VG_(get_fnname_if_entry)(ep, st->Ist.IMark.addr, &fnname)) {
                         showFunc(fnname);
+                        VG_(strcpy)(lastFnname, fnname);
+                    }
+                    else {
+                        if(VG_(get_fnname)(ep, st->Ist.IMark.addr, &fnname)) {
+                            if(VG_(strcmp)(lastFnname, fnname) != 0) {
+                                showFunc(fnname);
+                                VG_(strcpy)(lastFnname, fnname);
+                            }
+                        }
                     }
                 }
                 if(clo_mem_trace) {
@@ -744,7 +822,7 @@ static void mt_pre_clo_init(void)
     VG_(details_copyright_author)(
       "Copyright (C) 2018, and GNU GPL'd, by Kr4t0n.");
     VG_(details_bug_reports_to)  (VG_BUGS_TO);
-    VG_(details_avg_translation_sizeB) (200);
+    VG_(details_avg_translation_sizeB) (330);
 
     VG_(basic_tool_funcs)          (mt_post_clo_init,
                                     mt_instrument,
@@ -762,9 +840,17 @@ static void mt_pre_clo_init(void)
                                     mt___builtin_vec_delete,
                                     mt_realloc,
                                     mt_malloc_usable_size,
-                                    16);
+                                    0);
     VG_(needs_libc_freeres)();
     VG_(needs_cxx_freeres)();
+
+    HP_Chunk_alloc_pool = VG_(newPA)
+        (sizeof(HP_Chunk),
+         1000,
+         VG_(malloc),
+         "memtrace allocation pool",
+         VG_(free));
+    allocaiton_list = VG_(HT_construct)("memtrace allocation list");
 }
 
 VG_DETERMINE_INTERFACE_VERSION(mt_pre_clo_init)
