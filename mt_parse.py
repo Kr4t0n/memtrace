@@ -1,6 +1,9 @@
 from optparse import OptionParser
 import os
 
+# Default Value, could be modified with load_whitelist
+WHITELIST = ['printf', 'vprintf']
+
 
 class allocationInfo(object):
     def __init__(self, address, size, stacktrace):
@@ -13,6 +16,15 @@ class allocationInfo(object):
 
     def address_to_int(self):
         return int(self.address, 16)
+
+
+def load_whitelist(filename):
+    del WHITELIST[:]
+    fr = open(filename, 'r')
+    for line in fr:
+        curLine = line.strip().split()
+        WHITELIST.extend(curLine)
+    fr.close()
 
 
 def collect_allocation_info(filename, allocation_list):
@@ -52,6 +64,23 @@ def collect_allocation_info(filename, allocation_list):
     fr.close()
 
 
+def filter_allocation_info(allocation_list):
+    if allocation_list:
+        filter_allocation_list = []
+        for i in range(len(allocation_list)):
+            stacktrace = allocation_list[i].stacktrace
+            function_list = map(lambda x: x.split(' ')[2],
+                                stacktrace.split('\n')[:-1])
+            for j in range(len(function_list)):
+                if function_list[j] in WHITELIST:
+                    break
+            if j == len(function_list) - 1:
+                filter_allocation_list.append(allocation_list[i])
+        return filter_allocation_list
+    else:
+        return allocation_list
+
+
 def trace_particular_memory(filename, output_filename, allocation_info):
     fr = open(filename, 'r')
     fw = open(output_filename, 'w')
@@ -78,12 +107,19 @@ if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option('-f', '--file', dest='filename',
                       help='load data from file')
+    parser.add_option('-w', '--whitelist', dest='whitelist',
+                      help='load function white list')
     (options, args) = parser.parse_args()
 
     allocation_list = []
 
     if options.filename:
         collect_allocation_info(options.filename, allocation_list)
+
+    if options.whitelist:
+        load_whitelist(options.whitelist)
+
+    allocation_list = filter_allocation_info(allocation_list)
 
     if allocation_list:
         while True:
