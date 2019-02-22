@@ -41,7 +41,7 @@ def collect_allocation_info(filename, allocation_list):
                     line_num += 1
                     curLine = line.strip().split()
                     if (len(curLine) > 1 and
-                            curLine[1] != "Detailed"):
+                            curLine[1] in ['at', 'by']):
                         stacktrace += ' '.join(curLine[1:]) + '\n'
                     else:
                         break
@@ -56,8 +56,9 @@ def collect_allocation_info(filename, allocation_list):
                     curLine[1] == 'Address'):
                 address = str(curLine[2])
                 size = int(curLine[4])
-            allocation_list.append(allocationInfo(address, size, stacktrace))
-            allocation_list[-1].set_start_line_num(line_num)
+                allocation_list.append(
+                    allocationInfo(address, size, stacktrace))
+                allocation_list[-1].set_start_line_num(line_num)
         else:
             pass
         line_num += 1
