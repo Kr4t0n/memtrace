@@ -1,2 +1,4 @@
 printf
 vprintf
+startup_children
+unixd_setup_child
