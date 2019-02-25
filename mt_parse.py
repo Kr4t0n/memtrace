@@ -3,6 +3,8 @@ import os
 
 # Default Value, could be modified with load_whitelist
 WHITELIST = ['printf', 'vprintf']
+# Default Value, could be modified with load_targetlist
+TARGETLIST = []
 
 
 class allocationInfo(object):
@@ -24,6 +26,15 @@ def load_whitelist(filename):
     for line in fr:
         curLine = line.strip().split()
         WHITELIST.extend(curLine)
+    fr.close()
+
+
+def load_targetlist(filename):
+    del TARGETLIST[:]
+    fr = open(filename, 'r')
+    for line in fr:
+        curLine = line.strip().split()
+        TARGETLIST.extend(curLine)
     fr.close()
 
 
@@ -82,6 +93,22 @@ def filter_allocation_info(allocation_list):
         return allocation_list
 
 
+def aim_allocation_info(allocation_list):
+    if allocation_list:
+        aim_allocation_list = []
+        for i in range(len(allocation_list)):
+            stacktrace = allocation_list[i].stacktrace
+            function_list = map(lambda x: x.split(' ')[2],
+                                stacktrace.split('\n')[:-1])
+            for j in range(len(function_list)):
+                if function_list[j] in TARGETLIST:
+                    aim_allocation_list.append(allocation_list[i])
+                    break
+        return aim_allocation_list
+    else:
+        return allocation_list
+
+
 def trace_particular_memory(filename, output_filename, allocation_info):
     fr = open(filename, 'r')
     fw = open(output_filename, 'w')
@@ -108,6 +135,8 @@ if __name__ == '__main__':
     parser = OptionParser()
     parser.add_option('-f', '--file', dest='filename',
                       help='load data from file')
+    parser.add_option('-t', '--target', dest='targetlist',
+                      help='load function target list')
     parser.add_option('-w', '--whitelist', dest='whitelist',
                       help='load function white list')
     (options, args) = parser.parse_args()
@@ -119,8 +148,11 @@ if __name__ == '__main__':
 
     if options.whitelist:
         load_whitelist(options.whitelist)
-
     allocation_list = filter_allocation_info(allocation_list)
+
+    if options.targetlist:
+        load_targetlist(options.targetlist)
+        allocation_list = aim_allocation_info(allocation_list)
 
     if allocation_list:
         while True:
