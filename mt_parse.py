@@ -207,7 +207,7 @@ def menu_show_allocation_list(filename, allocation_list):
                 "Select the memory address to trace (0 to previous menu): "))
             if alloc_index > len(allocation_list):
                 print "Index out of range, please input correct number"
-                raw_input("Press any key to continue ...")
+                raw_input("Press ENTER key to continue ...")
             elif alloc_index == 0:
                 break
             else:
@@ -250,8 +250,10 @@ def menu_show_allocation_info(filename, allocation_info):
             elif menu_choice == 0:
                 break
             else:
+                print
                 continue
         except Exception:
+            print
             continue
 
 
@@ -262,7 +264,7 @@ def menu_analysis_function(filename, allocation_list):
         address_list = analysis_function(filename, function_name)
         print "Potential involved allocation start point :"
         print address_list
-        raw_input("Press any key to continue ...")
+        raw_input("Press ENTER key to continue ...")
         potential_allocation_list = search_allocationInfo_with_address(
             address_list, allocation_list)
         menu_show_allocation_list(filename, potential_allocation_list)
