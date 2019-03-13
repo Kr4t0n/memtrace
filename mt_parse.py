@@ -191,7 +191,7 @@ def trace_particular_memory(filename, output_filename, allocation_info):
     fw.close()
 
 
-def menu_show_allocation_list(filename, allocation_list):
+def menu_show_allocation_list(filename, allocation_list, full_allocation_list):
     while True:
         os.system("clear")
         print "Allocation Information :"
@@ -267,7 +267,8 @@ def menu_analysis_function(filename, allocation_list):
         raw_input("Press ENTER key to continue ...")
         potential_allocation_list = search_allocationInfo_with_address(
             address_list, allocation_list)
-        menu_show_allocation_list(filename, potential_allocation_list)
+        menu_show_allocation_list(
+            filename, potential_allocation_list, allocation_list)
 
 
 def analysis_function(filename, function_name):
@@ -357,7 +358,7 @@ if __name__ == '__main__':
                 os.system("clear")
                 if menu_choice == 1:
                     menu_show_allocation_list(
-                        options.filename, allocation_list)
+                        options.filename, allocation_list, allocation_list)
                 elif menu_choice == 2:
                     menu_analysis_function(
                         options.filename, allocation_list)
