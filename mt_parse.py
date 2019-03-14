@@ -7,6 +7,10 @@ WHITELIST = ['printf', 'vprintf']
 TARGETLIST = []
 # Default Value, could be modified with load_modules
 MODULES = []
+# Default Value, could be modified with load_safelist
+SAFELIST = []
+# Default Value, could be modified with load_vulnerlist
+VULNERLIST = []
 
 
 class allocationInfo(object):
@@ -50,6 +54,24 @@ def load_modules(filename):
     for line in fr:
         curLine = line.strip().split()
         MODULES.extend(curLine)
+    fr.close()
+
+
+def load_safelist(filename):
+    del SAFELIST[:]
+    fr = open(filename, 'r')
+    for line in fr:
+        curLine = line.strip().split()
+        SAFELIST.extend(curLine)
+    fr.close()
+
+
+def load_vulnerlist(filename):
+    del VULNERLIST[:]
+    fr = open(filename, 'r')
+    for line in fr:
+        curLine = line.strip().split()
+        VULNERLIST.extend(curLine)
     fr.close()
 
 
@@ -212,12 +234,14 @@ def menu_show_allocation_list(filename, allocation_list, full_allocation_list):
                 break
             else:
                 menu_show_allocation_info(
-                    filename, allocation_list[alloc_index - 1])
+                    filename,
+                    allocation_list[alloc_index - 1],
+                    full_allocation_list)
         except Exception:
             continue
 
 
-def menu_show_allocation_info(filename, allocation_info):
+def menu_show_allocation_info(filename, allocation_info, full_allocation_list):
     os.system("clear")
     while True:
         print "{}\t{}".format(
@@ -227,6 +251,7 @@ def menu_show_allocation_info(filename, allocation_info):
         print " -[ 1] Show size and full stack trace of allocation"
         print " -[ 2] Output memory tracing for this allocation"
         print " -[ 3] Extract Function Execution Order"
+        print " -[ 4] Attack Analysis"
         try:
             menu_choice = int(raw_input("(0 to previous menu): "))
             if menu_choice == 1:
@@ -246,7 +271,10 @@ def menu_show_allocation_info(filename, allocation_info):
                     print allocation_info.function_order
                     print
                 else:
-                    print "Please Select Option 2 first! \n"
+                    print "Please Run Option 2 first! \n"
+            elif menu_choice == 4:
+                attack_analysis_process(
+                    filename, allocation_info, full_allocation_list)
             elif menu_choice == 0:
                 break
             else:
@@ -257,11 +285,178 @@ def menu_show_allocation_info(filename, allocation_info):
             continue
 
 
-def menu_analysis_function(filename, allocation_list):
+def attack_analysis_process(filename, allocation_info, full_allocation_list):
+    while True:
+        os.system("clear")
+        print "Attack Analysis Process ..."
+        try:
+            overflow_offset = int(
+                raw_input("Overflow offset (Hex form): "), 16)
+            overflow_size = int(
+                raw_input("Overflow size (Bytes): "))
+        except Exception:
+            continue
+        overflow_start = int(allocation_info.address, 16) + overflow_offset
+        overflow_end = overflow_start + overflow_size
+        hex_overflow_start = "0x{:08x}".format(overflow_start)
+        hex_overflow_end = "0x{:08x}".format(overflow_end)
+        print "Potential corrupted memory interval [{}, {}]".format(
+            hex_overflow_start, hex_overflow_end)
+        bug_site_func = raw_input("Bug site function: ")
+        print
+        print "Retrieve bug site function information ..."
+        bug_site_occur = bug_site_occur_analysis(filename, bug_site_func)
+        print "Analysis influenced corrupted memory structure ..."
+        corrupted_allocation_list = influenced_corrupted_memory(
+            overflow_start,
+            overflow_end,
+            full_allocation_list)
+        raw_input("Press ENTER key to continue ...")
+        print
+        print "Attack inferring ..."
+        for i in range(len(corrupted_allocation_list)):
+            print "Structure {:>2d} - {}".format(
+                i + 1,
+                corrupted_allocation_list[i].address)
+            attack_infer_process(filename,
+                                 bug_site_occur,
+                                 corrupted_allocation_list[i],
+                                 overflow_start,
+                                 overflow_end)
+        break
+    raw_input("Press ENTER key to continue ...")
+    os.system("clear")
+
+
+def bug_site_occur_analysis(filename, bug_site_func):
+    fr = open(filename, 'r')
+    line_num = 0
+    for line in fr:
+        line_num += 1
+        curLine = line.strip().replace(':', '').split()
+        if len(curLine) == 2:
+            if bug_site_func == curLine[1]:
+                break
+            else:
+                continue
+        else:
+            continue
+
+    fr.close()
+    return line_num
+
+
+def influenced_corrupted_memory(overflow_start,
+                                overflow_end,
+                                full_allocation_list):
+    corrupted_allocation_list = []
+    for i in range(len(full_allocation_list)):
+        start_point = int(full_allocation_list[i].address, 16)
+        end_point = start_point + full_allocation_list[i].size
+        if (end_point < overflow_start or overflow_end < start_point):
+            continue
+        else:
+            corrupted_allocation_list.append(full_allocation_list[i])
+
+    for i in range(len(corrupted_allocation_list)):
+        alloc_info_print = "\t[{:>2d}] {}\t{}".format(
+            i + 1,
+            corrupted_allocation_list[i].address,
+            corrupted_allocation_list[i].stacktrace.split()[-1])
+        print alloc_info_print
+
+    return corrupted_allocation_list
+
+
+def attack_infer_process(filename,
+                         bug_site_occur,
+                         corrupted_allocation_info,
+                         overflow_start,
+                         overflow_end):
+    try:
+        os.mkdir('./{}'.format(bug_site_occur))
+    except Exception:
+        pass
+    write_file_path = '{}/{}.log'.format(
+        bug_site_occur,
+        corrupted_allocation_info.address)
+    print "\tDumping memory tracing file to {} ...".format(write_file_path)
+    fr = open(filename, 'r')
+    fw = open(write_file_path, 'w')
+    if corrupted_allocation_info.function_order:
+        del corrupted_allocation_info.function_order[:]
+
+    for i in range(bug_site_occur - 1):
+        fr.readline()
+
+    corrupted_start = int(corrupted_allocation_info.address, 16)
+    corrupted_end = corrupted_start + corrupted_allocation_info.size
+    start_point = max(corrupted_start, overflow_start)
+    end_point = min(corrupted_end, overflow_end)
+
+    for line in fr:
+        curLine = line.strip().replace(':', '').split()
+        if len(curLine) == 1:
+            continue
+        elif len(curLine) == 2:
+            function_line = line
+            continue
+        elif curLine[1] in ['Load', 'Store']:
+            operation_address = int(curLine[3], 16)
+            if (operation_address >= start_point and
+                    operation_address <= end_point):
+                if function_line:
+                    fw.write(function_line)
+                    corrupted_allocation_info.add_function_order(
+                        function_line.strip().replace(':', '').split()[1])
+                    function_line = ""
+                fw.write('\t' + ' '.join(line.split()[1:]) + '\n')
+            continue
+        else:
+            continue
+
+    fr.close()
+    fw.close()
+
+    print "\tFunctions following up:"
+    print u"\t\t{}\n".format(
+        u' \u2192 '.join(corrupted_allocation_info.function_order))
+    function_safe_vulner_analysis(corrupted_allocation_info.function_order)
+
+
+def function_safe_vulner_analysis(function_order):
+    print "\tFunctions characteristic analysis ..."
+    vulner_functions = []
+    unknown_functions = []
+    for function in function_order:
+        if function in SAFELIST:
+            continue
+        elif function in VULNERLIST:
+            vulner_functions.append(function)
+        else:
+            unknown_functions.append(function)
+    print "\tPotential vulnerable functions:"
+    if vulner_functions:
+        print "\t\t{}".format(", ".join(vulner_functions))
+    else:
+        print "\t\tNone"
+    print "\tUnknoen functions, need further manual analysis:"
+    if unknown_functions:
+        print "\t\t{}".format(", ".join(unknown_functions))
+    else:
+        print "\t\tNone"
+
+    if not (vulner_functions or unknown_functions):
+        print "\tCurrently safe !"
+
+    print
+
+
+def menu_function_analysis(filename, allocation_list):
     os.system("clear")
     function_name = raw_input("Type any function name involved :")
     if function_name:
-        address_list = analysis_function(filename, function_name)
+        address_list = function_analysis(filename, function_name)
         print "Potential involved allocation start point :"
         print address_list
         raw_input("Press ENTER key to continue ...")
@@ -271,7 +466,7 @@ def menu_analysis_function(filename, allocation_list):
             filename, potential_allocation_list, allocation_list)
 
 
-def analysis_function(filename, function_name):
+def function_analysis(filename, function_name):
     fr = open(filename, 'r')
     address_list = []
 
@@ -323,9 +518,13 @@ if __name__ == '__main__':
     parser.add_option('-m', '--module', dest='modules',
                       help='load specific allocation module sources from file \
                        to filter (eg. main.c)')
+    parser.add_option('-s', '--safe_function', dest='safelist',
+                      help='load safe functions from safe list')
     parser.add_option('-t', '--target', dest='targetlist',
                       help='load target allocation function sources from file \
                        to filter (eg. malloc_init)')
+    parser.add_option('-v', '--vulnerable_function', dest='vulnerlist',
+                      help='load vulnerable functions from vulner list')
     parser.add_option('-w', '--whitelist', dest='whitelist',
                       help='load function white list')
     (options, args) = parser.parse_args()
@@ -347,6 +546,12 @@ if __name__ == '__main__':
         load_modules(options.modules)
         allocation_list = module_allocation_info(allocation_list)
 
+    if options.safelist:
+        load_safelist(options.safelist)
+
+    if options.vulnerlist:
+        load_vulnerlist(options.vulnerlist)
+
     if allocation_list:
         while True:
             os.system("clear")
@@ -360,7 +565,7 @@ if __name__ == '__main__':
                     menu_show_allocation_list(
                         options.filename, allocation_list, allocation_list)
                 elif menu_choice == 2:
-                    menu_analysis_function(
+                    menu_function_analysis(
                         options.filename, allocation_list)
                 elif menu_choice == 0:
                     break
@@ -368,42 +573,3 @@ if __name__ == '__main__':
                     continue
             except Exception:
                 continue
-
-    # if allocation_list:
-    #     while True:
-    #         os.system("clear")
-    #         print "Allocation Information :"
-    #         for i in range(len(allocation_list)):
-    #             alloc_info_print = " -[{:>2d}] {}\t{}".format(
-    #                 i + 1,
-    #                 allocation_list[i].address,
-    #                 allocation_list[i].stacktrace.split()[-1])
-    #             print alloc_info_print
-    #         alloc_index = int(raw_input(
-    #             "Select the memory address to trace (0 to exit): "))
-    #         os.system("clear")
-    #         if alloc_index != 0:
-    #             while True:
-    #                 print "{}\t{}".format(
-    #                     allocation_list[alloc_index - 1].address,
-    #                     allocation_list[alloc_index - 1].stacktrace.split()[-1]
-    #                 )
-    #                 print " -[ 1] Show size and full stack trace of allocation"
-    #                 print " -[ 2] Trace memory usage"
-    #                 menu_choice = int(raw_input("(0 to previous menu): "))
-    #                 if menu_choice == 1:
-    #                     print
-    #                     print "Size: {}".format(
-    #                         allocation_list[alloc_index - 1].size)
-    #                     print allocation_list[alloc_index - 1].stacktrace
-    #                 elif menu_choice == 2:
-    #                     print
-    #                     output_filename = str(raw_input("Output filename: "))
-    #                     trace_particular_memory(
-    #                         options.filename,
-    #                         output_filename,
-    #                         allocation_list[alloc_index - 1])
-    #                 else:
-    #                     break
-    #         else:
-    #             break
