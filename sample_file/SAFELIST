@@ -1,0 +1,2 @@
+apr_pool_destroy
+apr_allocator_destroy
