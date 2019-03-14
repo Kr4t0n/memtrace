@@ -1,0 +1,3 @@
+mod_lod_config.c
+log.c
+pal2rgb.c

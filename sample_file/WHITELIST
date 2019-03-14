@@ -1,0 +1,10 @@
+printf
+vprintf
+free_mem
+__libc_freeres
+_vgnU_freeres
+TIFFClientOpen
+startup_children
+unixd_setup_child
+clone
+worker_thread
