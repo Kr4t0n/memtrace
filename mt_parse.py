@@ -396,7 +396,7 @@ def attack_infer_process(filename,
 
     for line in fr:
         curLine = line.strip().replace(':', '').split()
-        if len(curLine) == 1:
+        if len(curLine) <= 1:
             continue
         elif len(curLine) == 2:
             function_line = line
