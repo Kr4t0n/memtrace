@@ -268,7 +268,8 @@ def menu_show_allocation_info(filename, allocation_info, full_allocation_list):
                 print "Output Memory Tracing File Successfully! \n"
             elif menu_choice == 3:
                 if allocation_info.function_order:
-                    print allocation_info.function_order
+                    print
+                    print u' \u2192 '.join(allocation_info.function_order)
                     print
                 else:
                     print "Please Run Option 2 first! \n"
@@ -396,7 +397,7 @@ def attack_infer_process(filename,
 
     for line in fr:
         curLine = line.strip().replace(':', '').split()
-        if len(curLine) == 1:
+        if len(curLine) <= 1:
             continue
         elif len(curLine) == 2:
             function_line = line

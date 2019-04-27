@@ -1,3 +1,5 @@
 ap_log_error
 flush_all_logs
 flush_log
+ap_default_log_writer
+log_status

@@ -1,2 +1,4 @@
 apr_pool_destroy
 apr_allocator_destroy
+pthread_cond_broadcast@@GLIBC_2.3.2
+__x86.get_pc_thunk.bx
