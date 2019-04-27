@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<!--[if lt IE 7 ]><html class="ie ie6" lang="en"> <![endif]-->
+<!--[if IE 7 ]><html class="ie ie7" lang="en"> <![endif]-->
+<!--[if IE 8 ]><html class="ie ie8" lang="en"> <![endif]-->
+<!--[if (gte IE 9)|!(IE)]><!-->
+<html lang="en">
+<!--<![endif]-->
+
+<head>
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <meta name="keywords" content="">
+
+    <title>Cougar | Documentation by Kr4t0n</title>
+
+    <link rel="shortcut icon" href="images/favicon.ico" type="image/x-icon">
+
+    <link rel="stylesheet" type="text/css" href="fonts/font-awesome-4.3.0/css/font-awesome.min.css">
+    <link rel="stylesheet" type="text/css" href="css/stroke.css">
+    <link rel="stylesheet" type="text/css" href="css/bootstrap.css">
+    <link rel="stylesheet" type="text/css" href="css/animate.css">
+    <link rel="stylesheet" type="text/css" href="css/prettyPhoto.css">
+    <link rel="stylesheet" type="text/css" href="css/style.css">
+
+    <link rel="stylesheet" type="text/css" href="js/syntax-highlighter/styles/shCore.css" media="all">
+    <link rel="stylesheet" type="text/css" href="js/syntax-highlighter/styles/shThemeRDark.css" media="all">
+
+    <!-- CUSTOM -->
+    <link rel="stylesheet" type="text/css" href="css/custom.css">
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+</head>
+
+<body>
+
+    <div id="wrapper">
+
+        <div class="container">
+
+            <section id="top" class="section docs-heading">
+
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="big-title text-center">
+                            <h1>Cougar</h1>
+                            <p class="lead">A Memory Tracing Tool and Attack Analysis Tool</p>
+<!--                             <p class="lead">Thesis | PPT | Project</p> -->
+                        </div>
+                        <!-- end title -->
+                    </div>
+                    <!-- end 12 -->
+                </div>
+                <!-- end row -->
+
+                <hr>
+
+            </section>
+            <!-- end section -->
+
+            <div class="row">
+
+                <div class="col-md-3">
+                    <nav class="docs-sidebar" data-spy="affix" data-offset-top="300" data-offset-bottom="200" role="navigation">
+                        <ul class="nav">
+                            <li><a href="#line1">Getting Started</a></li>
+                            <li><a href="#line2">How to Install Cougar</a></li>
+                            <li><a href="#line3">How to use Python Parser</a></li>
+                            <li><a href="#line4">Research Idea</a></li>
+                            <li><a href="#line5">Implementation Idea</a></li>
+                            <li><a href="#line6">Evaluation</a>
+                                <ul class="nav">
+                                    <li><a href="#line6_1">Single Threaded</a></li>
+                                    <li><a href="#line6_2">Multi Threaded</a></li>
+                                </ul>
+                            </li>
+                            <li><a href="#line7">Testing Benchmark</a>
+                                <ul class="nav">
+                                    <li><a href="#line7_1">Single Threaded Time Overhead</a></li>
+                                    <li><a href="#line7_2">Multi Threaded Time Overhead</a></li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </nav >
+                </div>
+                <div class="col-md-9">
+                    <section class="welcome">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">Introduction<hr></h2>
+                                <div class="row">
+
+                                    <div class="col-md-12 full">
+                                        <div class="intro1">
+                                            <ul>
+                                                <li><strong>Cougar : </strong>A Memory Tracing and Attack Analysis Tool</li>
+                                                <li><strong>Cougar Version : </strong> v 1.0</li>
+                                                <li><strong>Author  : </strong> <a href="https://github.com/Kr4t0n" target="_blank">Kr4t0n</a></li>
+                                                <li><strong>License : </strong> <a href="#" target="_blank">N/A</a></li>
+                                            </ul>
+                                        </div>
+
+                                        <hr>
+                                        <div>
+                                            <p>First of all, Thank you so much for using this tool.
+                                            </p>
+
+                                            <p>Cougar is a newest built tool, which works on the newest version of Valgrind. And it is easy for researchers and anyone else to use for testing and tracing corresponding memory without any prior knowledge and modification to your source code. Cougar will combine the functionalities of detection of allocation and deallocation during program running and provide memory tracing and function order for following execution. And also, Cougar could do the post-process attack analysis for you to make the memory exploring process much more easier. Cougar is mainly divided into three different major parts, <strong>Preload Allocation Replacement</strong>, <strong>Function Execution Order and Memory Tracing </strong>, and <strong>Post-process Memory Analysis</strong>. 
+                                            </p>
+
+                                            <h4>Requirements</h4>
+                                            <p>You will need the following softwares to use this tool.</p>
+                                            <ol>
+                                                <li>Valgrind</li>
+                                                <li>Python</li>
+                                            </ol>
+                                            
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <!-- end row -->
+                            </div>
+                        </div>
+                    </section>
+
+                    <section id="line1" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">Getting Started <hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <div class="row">
+                            <div class="col-md-12">
+                                <p>Cougar implements the foundation of memory tracing based on Valgrind, and invents a brand new plug-in called <strong>Memtrace</strong> to do the dirty work. Memtrace and Valgrind is easy to use in your program. Valgrind provides a virtual environment to execute your program. All you have to do is adding Memtrace and Valgrind execution statement as a prefix to your normal execution.</p>
+
+                                <h4>An basic example</h4>
+
+                                <pre class="brush: bash">
+                                    ./valgrind --tool=memtrace ./your-execute-statement
+                                </pre>
+
+                                <p>Or you can use it with more options like this;</p>
+
+                                <pre class="brush: bash">
+                                    ./valgrind --tool=memtrace --trace-all=no --trace-children=yes --log-file=logfile ./your-execute-statement
+                                </pre>
+
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                    </section>
+                    <!-- end section -->
+
+                    <section id="line2" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">How to Install Cougar<hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <div class="intro2 clearfix">
+                            <p> You can find the source code of Memtrace here. <a href="https://github.com/Kr4t0n/memtrace">Memtrace Source Code.</a> </p>
+                        </div>
+
+                        <hr>
+
+                        <h4>Create a new folder - memtrace</h4>
+
+                        <p>First of all, create a new folder, memtrace, in the root source of Valgrind. And copy all the necessary files of Memtrace source code into that folder. Remember, we use <strong>mt</strong>, refers to memtrace, as its short prefix.</p>
+
+                        <p>Edit <strong>Makefile.am</strong> in Valgrind root directory, adding the new directory <strong>memtrace</strong> to the <strong>TOOLS</strong> variables. It will be something as follows:</p>
+
+                        <pre class="brush: bash">
+                            TOOLS =         memcheck \
+                                            cachegrind \
+                                            callgrind \
+                                            massif \
+                                            lackey \
+                                            none \
+                                            helgrind \
+                                            drd \
+                                            memtrace
+                        </pre>
+
+                        <p>Edit <strong>configure.ac</strong> in Valgrind root directory, adding <strong>memtrace/Makefile, memtrace/tests/Makefile</strong> to the <strong>AC_OUTPUT</strong> list. It will be something as follows:</p>
+
+                        <pre class="brush: bash">
+                            AC_OUTPUT([memtrace/Makefile memtrace/tests/Makefile])
+                        </pre>
+
+                        <p>Afterwards, run:</p>
+
+                        <pre class="brush: bash">
+                            autogen.sh
+                            ./configure --prefix=`pwd`/inst
+                            make && make install
+                        </pre>
+
+                        <p>It should automake, configure and compile without errors, putting memtrace in <strong>memtrace/</strong> and <strong>inst/lib/valgrind/</strong>.</p>
+
+                    </section>
+                    <!-- end section -->
+
+                    <section id="line3" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">How to use Python Parser<hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <h4>After obtaining memory tracing LogFile</h4>
+
+                        <p>Once you have successfully obtained the output memory tracing LogFile. It's always messy and hard to interpret. So we have to parse the LogFile with a Python Parser to gain useful information and do the memory analysis.</p>
+
+                        <p>The basic usage of Python Parser is shown as follows:</p>
+
+                        <pre class="brush: bash">
+                            python mt_parser.py -f LogFile
+                        </pre>
+
+                        <p>More detailed option and information could be find using help option.</p>
+
+                        <pre class="brush: bash">
+                            Usage: mt_parse.py [options]
+
+                            Options:
+                              -h, --help            show this help message and exit
+                              -f FILENAME, --file=FILENAME
+                                                    load memory tracing data
+                              -m MODULES, --module=MODULES
+                                                    load specific allocation module sources from file
+                                                    to filter (eg. main.c)
+                              -s SAFELIST, --safe_function=SAFELIST
+                                                    load safe functions from safe list
+                              -t TARGETLIST, --target=TARGETLIST
+                                                    load target allocation function sources from file
+                                                    to filter (eg. malloc_init)
+                              -v VULNERLIST, --vulnerable_function=VULNERLIST
+                                                    load vulnerable functions from vulner list
+                              -w WHITELIST, --whitelist=WHITELIST
+                                                    load function white list
+                        </pre>
+
+                    </section>
+                    <!-- end section -->
+
+                    <section id="line4" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">Research Idea<hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <h4>Preload Allocation Replacement</h4>
+                                <p>It’s hard for us to know the corresponding address of allocation in advance. Therefore, in order to do memory tracing, we have to manage the allocation function by ourselves.</p>
+                            </div>
+                            <!-- end col -->
+
+                            <div class="col-md-4">
+                                <h4>Function Execution Order</h4>
+                                <p>It’s hard to simply read a bunch of memory access and trace log for any users. Therefore, point out the memory usage pattern under which specific function and the order of these functions will help users to interpret and understand the whole program running process.</p>
+                            </div>
+                            <!-- end col -->
+
+                            <div class="col-md-4">
+                                <h4>Post-process Memory Analysis</h4>
+                                <p>It’s hard to filter and narrow pieces of memory to trace during runtime, since we have no prior knowledge of the exact address of particular structure. Therefore, the report of the whole program running might be hard to interpret at first glance.</p>
+                            </div>
+                            <!-- end col -->
+
+                        </div>
+                        <!-- end row -->
+
+                    </section>
+                    <!-- end section -->
+
+                    <section id="line5" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">Implementation Idea<hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <div class="row">
+
+                            <div class="col-md-12">
+                                <p>The basic idea and roughly implementation detail of how to solve above-mentioned three research ideas.</p>
+                            </div>
+
+                            <div class="col-md-4">
+                                <h4 id="line5_1">Preload Allocation Replacement</h4>
+                                <p>Using a series of allocation and deallocation wrappers that replace original functions during program running. With these wrappers and proper functionalities inside, we can record and manage address and size of the allocation as we want, which will be helpful in the following part.</p>
+                                <ul>
+                                    <li><strong>Step 1</strong> - Using a allocation pool to record and manage the allocation happened inside Allocation pool will help to isolate these memory spaces from program running spaces.</li>
+                                    <li><strong>Step 2</strong> - Using a hash-table to store and link these address and do all the add, remove and search stuff happened in following executions.</li>
+                                </ul>
+                            </div>
+                            <!-- end col -->
+
+                            <div class="col-md-4">
+                                <h4 id="line5_2">Function Execution Order</h4>
+                                <p>Function execution order provides the flow of memory access during program running. It helps to indicate when and where such memory piece is operated. Cooperated with the knowledge of corrupted places of execution, it can also narrow down possible functions that attack may happen.</p>
+                                <ul>
+                                    <li><strong>Step 1</strong> - Running the program in a virtual environment and record every function execution changed to generate a order report.</li>
+                                    <li><strong>Step 2</strong> - Capture all the memory access happened inside each function execution and compared with the address inside hash-table to generate a memory tracing report.</li>
+                                </ul>
+                            </div>
+                            <!-- end col -->
+
+                            <div class="col-md-4">
+                                <h4 id="line5_3">Post-process Memory Analysis</h4>
+                                <p>Using post-process memory analysis, we can gain clearer information of each allocation. And we can filter out and generate separate report of function execution order and memory tracing for each allocation. Lastly, cut off unnecessary focus on some allocation.</p>
+                                <ul>
+                                    <li><strong>Step 1</strong> - Once generated a report from previous process, a Python script is also give to do the post-process operation.</li>
+                                    <li><strong>Step 2</strong> - Script will parse the information in the report and present the information in a clearer way with terminal interactive environment.</li>
+                                </ul>
+                            </div>
+                            <!-- end col -->
+
+                        </div>
+                        <!-- end row -->
+
+                    </section>
+                    <!-- end section -->
+
+                    <section id="line6" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">Evaluation<hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <div class="row">
+
+                            <div class="col-md-12 left-align">
+                                <h4 id="line6_1">Single Threaded - LibTIFF</h4>
+                                <p>Cougar is first evaluated with some normal real-life overflow exploitations. A sample could be LibTIFF pal2rgb 4.0.9 – Heap Buffer Overflow, CVE-2017-17095. The vulnerability is triggered by ./tools/pal2rgb $FILE /dev/null. It is reported that pal2rgb allocates output buffer too small to convert TIFF format at pal2rgb:188. The output buffer is said to be always fixed (225 bytes), causing an overflow when writing with actual image width and image length.</p>
+                                <img src="images/upload/LibTIFF-1.png" alt="" class="img-responsive img-thumbnail">
+                                <p>By using Cougar, we do successfully capture and track down the information of this specific allocation and its corresponding memory in the following execution.</p>
+                                <img src="images/upload/LibTIFF-2.png" alt="" class="img-responsive img-thumbnail">
+                                <img src="images/upload/LibTIFF-3.png" alt="" class="img-responsive img-thumbnail">
+                                <p>However, when we test this exploitation with Cougar, a question point is discovered. I found that the obuf is not fixed with 225 bytes as it’s said to be. When using files other than the POC file, LibTIFF could allocate obuf normally and ended up properly. Therefore, the POC file must be in a special case.</p>
+                                <img src="images/upload/LibTIFF-4.png" alt="" class="img-responsive img-thumbnail">
+                                <p>Even without any prior knowledge and learning of source code like I do, using Cougar could not only easily help detect, learn and investigate the real-life exploitation, but also obtain the related information and memory usage pattern as quick as an expert.</p>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <hr>
+
+                        <div class="row">
+
+                            <div class="col-md-12 left-align">
+                                <h4 id="line6_2">Multi Threaded - Apache</h4>
+                                <p>Cougar can be used not only in single threaded program as LibTIFF, but also heavy, large multi-threaded program even as Apache httpd server. All you have to do is start the server under previous mentioned command, and let Cougar do rest of the job. Here is a sample Apache-25520, a data race happened in httpd-2.0.48. This data race bug happens inside a function called ap_buffered_log_writer. The more detailed information called be found at bug database on Internet. When dealing with heavy program as Apache, Cougar may report with bunch of captured allocations. And at most time, it is hard for any of us to find out the exact allocation that is involved. Therefore, Cougar also provides a function analysis feature to help us narrow down the target.</p>
+                                <img src="images/upload/Apache-1.png" alt="" class="img-responsive img-thumbnail">
+                                <p>Once you get the right allocation, you can do all the stuff around it including detailed allocation information, dumping all related memory operations and extracting whole function order. Besides all these functionalities, a pretty important feature is that it can also do a little bit of attack inferring specific to the overflow situations. With the overflow offset, overflow size and bug site input, it can automatically infer the involved corrupted memory address and infer the possible attack site. In the case of Apache-25520, the overflow offset is 0x15a8, with the size of 4096 bytes. The result could be shown as follows:</p>
+                                <img src="images/upload/Apache-2.png" alt="" class="img-responsive img-thumbnail">
+                                <p>With this functionality, Cougar could infer the potential attack site and report you with a way more efficient report, telling you if exists vulnerable functions or not. In this case, vulnerable functions may involve ap_log_error and flush_all_logs. And the fact that there is a potential attack site inside flush_all_logs, as it loads a file descriptor inside corrupted memory area.</p>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                    </section>
+                    <!-- end section -->
+
+                    <section id="line7" class="section">
+
+                        <div class="row">
+                            <div class="col-md-12 left-align">
+                                <h2 class="dark-text">Testing Benchmark<hr></h2>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <a href="images/upload/Overhead-1.png" data-rel="prettyPhoto"><img src="images/upload/Overhead-1.png" alt="" class="img-responsive img-thumbnail"></a>
+                            </div>
+
+                            <div class="col-md-8">
+                                <h4 id="line7_1">Single Threaded Time Overhead - LibTIFF</h4>
+                                <p>The time overhead is using Cougar's memory tracing module Memtrace comparing with Valgrind native tool Lackey. The first bar in blue is the LibTIFF original running time consumption. It is not so obvious since time consumption of memory analysis is usually multiple times of standard running. We can see that time consumption of trace-all option Memtrace is merely half of Lackey's. With the trace-part option, Memtrace is able to cut down time consumption further.</p>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                        <hr>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <a href="images/upload/Overhead-2.png" data-rel="prettyPhoto"><img src="images/upload/Overhead-2.png" alt="" class="img-responsive img-thumbnail"></a>
+                            </div>
+
+                            <div class="col-md-8">
+                                <h4 id="line7_2">Multi Threaded Time Overhead- Apache</h4>
+                                <p>Same as previous, the time overhead is using Memtrace and Lackey. As for the Apache, the overhead testing includes start and stop process and the time consumption when dealing with different requests using httperf. Also, the first bar in blue is not so obvious for the same reason. Memtrace only uses half of time consumption compared to Lackey. And with trace-part option, Memtrace will cost least time among these.</p>
+                            </div>
+                            <!-- end col -->
+                        </div>
+                        <!-- end row -->
+
+                    </section>
+                    <!-- end section -->
+
+                </div>
+                <!-- // end .col -->
+
+            </div>
+            <!-- // end .row -->
+
+        </div>
+        <!-- // end container -->
+
+    </div>
+    <!-- end wrapper -->
+
+    <script src="js/jquery.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+    <script src="js/retina.js"></script>
+    <script src="js/jquery.fitvids.js"></script>
+    <script src="js/wow.js"></script>
+    <script src="js/jquery.prettyPhoto.js"></script>
+
+    <!-- CUSTOM PLUGINS -->
+    <script src="js/custom.js"></script>
+    <script src="js/main.js"></script>
+
+    <script src="js/syntax-highlighter/scripts/shCore.js"></script>
+    <script src="js/syntax-highlighter/scripts/shBrushXml.js"></script>
+    <script src="js/syntax-highlighter/scripts/shBrushCss.js"></script>
+    <script src="js/syntax-highlighter/scripts/shBrushJScript.js"></script>
+    <script src="js/syntax-highlighter/scripts/shBrushBash.js"></script>
+    <script src="js/syntax-highlighter/scripts/shBrushPython.js"></script>
+
+</body>
+
+</html>
